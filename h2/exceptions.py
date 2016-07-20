@@ -170,12 +170,3 @@ class RFC1122Error(H2Error):
     # shazow says I'm going to regret naming the exception this way. If that
     # turns out to be true, TELL HIM NOTHING.
     pass
-
-
-class InvalidHeaderBlockError(ProtocolError):
-    """
-    An attempt was meant to send an invalid header block.
-
-    .. versionadded:: 2.5.0
-    """
-    pass
