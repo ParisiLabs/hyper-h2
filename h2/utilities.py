@@ -10,7 +10,9 @@ import re
 
 from hpack import HeaderTuple, NeverIndexedHeaderTuple
 
-from .exceptions import ProtocolError, FlowControlError, InvalidHeaderBlock
+from .exceptions import (
+    ProtocolError, FlowControlError, InvalidHeaderBlockError
+)
 
 UPPER_RE = re.compile(b"[A-Z]")
 
@@ -172,7 +174,7 @@ def validate_headers(headers, hdr_validation_flags):
     """
     Validates a header sequence against a set of constraints from RFC 7540.
 
-    :param headers: An iterable of headers.
+    :param headers: The HTTP header set.
     :param hdr_validation_flags: An instance of HeaderValidationFlags.
     """
     # This validation logic is built on a sequence of generators that are
@@ -280,9 +282,59 @@ def _reject_pseudo_header_fields(headers, hdr_validation_flags):
         yield header
 
 
+def _validate_host_authority_header(authority_header_val, host_header_val,
+                                    hdr_validation_flags):
+    """
+    Given the :authority and Host headers from a request block that isn't
+    a trailer, check that:
+     1. At least one of these headers is set.
+     2. If both headers are set, they match.
+    Raises a ProtocolError if this is a received header block, or an
+    InvalidHeaderBlockError if this is a header block we are about to send.
+    """
+    # If we have not-None values for these variables, then we know we saw
+    # the corresponding header.
+    authority_present = (authority_header_val is not None)
+    host_present = (host_header_val is not None)
+
+    # If we are client-side, then we are sending the request header block.
+    # If we are server-side, then we are receiving the block.
+    if hdr_validation_flags.is_client:
+        mode = 'sending'
+    else:
+        mode = 'receiving'
+
+    # It is an error for a request header block to contain neither
+    # an :authority header nor a Host header.
+    if not authority_present and not host_present:
+        if mode == 'receiving':
+            raise ProtocolError(
+                "Did not %s an :authority or Host header."
+            )
+        else:
+            raise InvalidHeaderBlockError(
+                "Did not send request header block without an :authority "
+                "or Host header."
+            )
+
+    # If we receive both headers, they should definitely match.
+    if authority_present and host_present:
+        if authority_header_val != host_header_val:
+            if mode == 'receiving':
+                raise ProtocolError(
+                    "Received mismatched :authority and Host headers: %r / %r"
+                    % (authority_header_val, host_header_val)
+                )
+            else:
+                raise InvalidHeaderBlockError(
+                    "Sending mismatched :authority and Host headers: %r / %r"
+                    % (authority_header_val, host_header_val)
+                )
+
+
 def _check_host_authority_header(headers, hdr_validation_flags):
     """
-    Raises a ProtocolError if a header block arrives that does not contain
+    Raises a ProtocolError if a header block arrives that does not contain an
     :authority or a Host header, or if a header block contains both fields,
     but their values do not match.
     """
@@ -311,25 +363,35 @@ def _check_host_authority_header(headers, hdr_validation_flags):
 
         yield header
 
-    # If we have not-None values for these variables, then we know we saw
-    # the corresponding header.
-    authority_present = (authority_header_val is not None)
-    host_present = (host_header_val is not None)
+    _validate_host_authority_header(
+        authority_header_val, host_header_val, hdr_validation_flags)
 
-    # It is an error for a request header block to contain neither
-    # an :authority header nor a Host header.
-    if not authority_present and not host_present:
-        raise ProtocolError(
-            "Did not receive an :authority or Host header."
-        )
 
-    # If we receive both headers, they should definitely match.
-    if authority_present and host_present:
-        if authority_header_val != host_header_val:
-            raise ProtocolError(
-                "Received mismatched :authority and Host headers: %r / %r" %
-                (authority_header_val, host_header_val)
-            )
+def _secure_headers(headers, hdr_validation_flags):
+    """
+    Certain headers are at risk of being attacked during the header compression
+    phase, and so need to be kept out of header compression contexts. This
+    function automatically transforms certain specific headers into HPACK
+    never-indexed fields to ensure they don't get added to header compression
+    contexts.
+
+    This function currently implements two rules:
+
+    - 'authorization' and 'proxy-authorization' fields are automatically made
+      never-indexed.
+    - Any 'cookie' header field shorter than 20 bytes long is made
+      never-indexed.
+
+    These fields are the most at-risk. These rules are inspired by Firefox
+    and nghttp2.
+    """
+    for header in headers:
+        if header[0] in _SECURE_HEADERS:
+            yield NeverIndexedHeaderTuple(*header)
+        elif header[0] in (b'cookie', u'cookie') and len(header[1]) < 20:
+            yield NeverIndexedHeaderTuple(*header)
+        else:
+            yield header
 
 
 def _lowercase_header_names(headers, hdr_validation_flags):
@@ -345,15 +407,50 @@ def _lowercase_header_names(headers, hdr_validation_flags):
             yield (header[0].lower(), header[1])
 
 
+def _check_sent_host_authority_header(headers, hdr_validation_flags):
+    """
+    Raises an InvalidHeaderBlockError if we try to send a header block
+    that does not contain an :authority or a Host header, or if
+    the header block contains both fields, but their values do not match.
+    """
+    # We only expect to see :authority and Host headers on request header
+    # blocks that aren't trailers, so skip this validation if we're on the
+    # server side or looking at trailer blocks.
+    if not hdr_validation_flags.is_client or hdr_validation_flags.is_trailer:
+        for header in headers:
+            yield header
+        return
+
+    # We use None as a sentinel value.  Iterate over the list of headers,
+    # and record the value of these headers (if present).
+    #
+    # TODO: Do we guard against sending duplicate :authority or host
+    # headers?
+    authority_header_val = None
+    host_header_val = None
+
+    for header in headers:
+        if header[0] == b':authority':
+            authority_header_val = header[1]
+        elif header[0] == b'host':
+            host_header_val = header[1]
+
+        yield header
+
+    _validate_host_authority_header(
+        authority_header_val, host_header_val, hdr_validation_flags)
+
+
 def validate_sent_headers(headers, hdr_validation_flags):
     """
     Validates and normalizes a header sequence that we are about to send.
 
-    :param headers: An iterable of headers.
+    :param headers: The HTTP header set.
     :param hdr_validation_flags: An instance of HeaderValidationFlags.
     """
+    headers = _secure_headers(headers, hdr_validation_flags)
     headers = _lowercase_header_names(headers, hdr_validation_flags)
-    headers = secure_headers(headers, hdr_validation_flags)
+    headers = _check_sent_host_authority_header(headers, hdr_validation_flags)
 
     for header in headers:
         yield header

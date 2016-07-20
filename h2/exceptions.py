@@ -172,7 +172,7 @@ class RFC1122Error(H2Error):
     pass
 
 
-class InvalidHeaderBlock(ProtocolError):
+class InvalidHeaderBlockError(ProtocolError):
     """
     An attempt was meant to send an invalid header block.
 
