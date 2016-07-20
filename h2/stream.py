@@ -918,11 +918,11 @@ class H2Stream(object):
             if not end_stream:
                 raise ProtocolError("Trailers must have END_STREAM set")
 
-        conn_state = HeaderValidationFlags(
+        hdr_validation_flags = HeaderValidationFlags(
             is_client=self.state_machine.client,
             is_trailer=isinstance(events[0], TrailersReceived)
         )
-        headers = validate_headers(headers, conn_state)
+        headers = validate_headers(headers, hdr_validation_flags)
 
         if header_encoding:
             headers = list(_decode_headers(headers, header_encoding))
@@ -1029,7 +1029,11 @@ class H2Stream(object):
         """
         # We need to lowercase the header names, and to ensure that secure
         # header fields are kept out of compression contexts.
-        headers = validate_sent_headers(headers, None)
+        hdr_validation_flags = HeaderValidationFlags(
+            is_client=self.state_machine.client,
+            is_trailer=False
+        )
+        headers = validate_sent_headers(headers, hdr_validation_flags)
         encoded_headers = encoder.encode(headers)
 
         # Slice into blocks of max_outbound_frame_size. Be careful with this:

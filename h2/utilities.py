@@ -283,53 +283,34 @@ def _reject_pseudo_header_fields(headers, hdr_validation_flags):
 
 
 def _validate_host_authority_header(authority_header_val, host_header_val,
-                                    hdr_validation_flags):
+                                    exception_class):
     """
     Given the :authority and Host headers from a request block that isn't
     a trailer, check that:
      1. At least one of these headers is set.
      2. If both headers are set, they match.
-    Raises a ProtocolError if this is a received header block, or an
-    InvalidHeaderBlockError if this is a header block we are about to send.
+    Raises ``exception_class`` if the header block is invalid.
     """
     # If we have not-None values for these variables, then we know we saw
     # the corresponding header.
     authority_present = (authority_header_val is not None)
     host_present = (host_header_val is not None)
 
-    # If we are client-side, then we are sending the request header block.
-    # If we are server-side, then we are receiving the block.
-    if hdr_validation_flags.is_client:
-        mode = 'sending'
-    else:
-        mode = 'receiving'
-
     # It is an error for a request header block to contain neither
     # an :authority header nor a Host header.
     if not authority_present and not host_present:
-        if mode == 'receiving':
-            raise ProtocolError(
-                "Did not %s an :authority or Host header."
-            )
-        else:
-            raise InvalidHeaderBlockError(
-                "Did not send request header block without an :authority "
-                "or Host header."
-            )
+        raise exception_class(
+            "Request header block must have an :authority of Host header."
+        )
 
     # If we receive both headers, they should definitely match.
     if authority_present and host_present:
         if authority_header_val != host_header_val:
-            if mode == 'receiving':
-                raise ProtocolError(
-                    "Received mismatched :authority and Host headers: %r / %r"
-                    % (authority_header_val, host_header_val)
-                )
-            else:
-                raise InvalidHeaderBlockError(
-                    "Sending mismatched :authority and Host headers: %r / %r"
-                    % (authority_header_val, host_header_val)
-                )
+            raise exception_class(
+                "Request header block must have matching :authority and "
+                "Host headers: %r / %r"
+                % (authority_header_val, host_header_val)
+            )
 
 
 def _check_host_authority_header(headers, hdr_validation_flags):
@@ -364,7 +345,7 @@ def _check_host_authority_header(headers, hdr_validation_flags):
         yield header
 
     _validate_host_authority_header(
-        authority_header_val, host_header_val, hdr_validation_flags)
+        authority_header_val, host_header_val, ProtocolError)
 
 
 def _secure_headers(headers, hdr_validation_flags):
@@ -438,7 +419,7 @@ def _check_sent_host_authority_header(headers, hdr_validation_flags):
         yield header
 
     _validate_host_authority_header(
-        authority_header_val, host_header_val, hdr_validation_flags)
+        authority_header_val, host_header_val, InvalidHeaderBlockError)
 
 
 def validate_sent_headers(headers, hdr_validation_flags):
