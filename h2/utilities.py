@@ -10,9 +10,7 @@ import re
 
 from hpack import HeaderTuple, NeverIndexedHeaderTuple
 
-from .exceptions import (
-    ProtocolError, FlowControlError, InvalidHeaderBlockError
-)
+from .exceptions import ProtocolError, FlowControlError
 
 UPPER_RE = re.compile(b"[A-Z]")
 
@@ -299,7 +297,7 @@ def _validate_host_authority_header(authority_header_val, host_header_val):
     # an :authority header nor a Host header.
     if not authority_present and not host_present:
         raise ProtocolError(
-            "Request header block must have an :authority of Host header."
+            "Request header block must have an :authority or Host header."
         )
 
     # If we receive both headers, they should definitely match.

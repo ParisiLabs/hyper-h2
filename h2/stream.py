@@ -18,7 +18,8 @@ from .errors import STREAM_CLOSED
 from .events import (
     RequestReceived, ResponseReceived, DataReceived, WindowUpdated,
     StreamEnded, PushedStreamReceived, StreamReset, TrailersReceived,
-    InformationalResponseReceived, AlternativeServiceAvailable
+    InformationalResponseReceived, AlternativeServiceAvailable,
+    ResponseSent, TrailersSent
 )
 from .exceptions import (
     ProtocolError, StreamClosedError, InvalidBodyLengthError
@@ -143,11 +144,13 @@ class H2StreamStateMachine(object):
             if self.client is True or self.client is None:
                 raise ProtocolError("Client cannot send responses.")
             self.headers_sent = True
+            event = ResponseSent()
         else:
             assert not self.trailers_sent
             self.trailers_sent = True
+            event = TrailersSent()
 
-        return []
+        return [event]
 
     def request_received(self, previous_state):
         """
@@ -754,12 +757,10 @@ class H2Stream(object):
 
             input_ = StreamInputs.SEND_INFORMATIONAL_HEADERS
 
-        # This does not trigger any events.
         events = self.state_machine.process_input(input_)
-        assert not events
 
         hf = HeadersFrame(self.stream_id)
-        frames = self._build_headers_frames(headers, encoder, hf)
+        frames = self._build_headers_frames(headers, encoder, hf, events)
 
         if end_stream:
             # Not a bug: the END_STREAM flag is valid on the initial HEADERS
@@ -787,7 +788,6 @@ class H2Stream(object):
         # Because encoding headers makes an irreversible change to the header
         # compression context, we make the state transition *first*.
 
-        # This does not trigger any events.
         events = self.state_machine.process_input(
             StreamInputs.SEND_PUSH_PROMISE
         )
@@ -795,7 +795,7 @@ class H2Stream(object):
 
         ppf = PushPromiseFrame(self.stream_id)
         ppf.promised_stream_id = related_stream_id
-        frames = self._build_headers_frames(headers, encoder, ppf)
+        frames = self._build_headers_frames(headers, encoder, ppf, events)
 
         return frames
 
@@ -1023,15 +1023,20 @@ class H2Stream(object):
     def _build_headers_frames(self,
                               headers,
                               encoder,
-                              first_frame):
+                              first_frame,
+                              events):
         """
         Helper method to build headers or push promise frames.
         """
         # We need to lowercase the header names, and to ensure that secure
         # header fields are kept out of compression contexts.
+        try:
+            is_trailer = isinstance(events[0], TrailersSent)
+        except IndexError:
+            is_trailer = False
         hdr_validation_flags = HeaderValidationFlags(
             is_client=self.state_machine.client,
-            is_trailer=False
+            is_trailer=is_trailer
         )
         headers = validate_sent_headers(headers, hdr_validation_flags)
         encoded_headers = encoder.encode(headers)

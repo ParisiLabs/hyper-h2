@@ -136,6 +136,51 @@ class TrailersReceived(object):
         )
 
 
+class ResponseSent(object):
+    """
+    The ResponseSent event is fired whenever request headers are received.
+    This event carries the HTTP headers for the given response and the stream
+    ID of the new stream.
+
+    .. versionadded:: 2.5.0
+    """
+    def __init__(self):
+        #: The Stream ID for the stream this response was made on.
+        self.stream_id = None
+
+        #: The response headers.
+        self.headers = None
+
+    def __repr__(self):
+        return "<ResponseSent stream_id:%s, headers:%s>" % (
+            self.stream_id, self.headers
+        )
+
+
+class TrailersSent(object):
+    """
+    The TrailersSent event is fired whenever trailers are sent on a
+    stream. Trailers are a set of headers sent after the body of the
+    request/response, and are used to provide information that wasn't known
+    ahead of time (e.g. content-length). This event carries the HTTP header
+    fields that form the trailers and the stream ID of the stream on which they
+    were received.
+
+    .. versionadded:: 2.5.0
+    """
+    def __init__(self):
+        #: The Stream ID for the stream on which these trailers were received.
+        self.stream_id = None
+
+        #: The trailers themselves.
+        self.headers = None
+
+    def __repr__(self):
+        return "<TrailersSent stream_id:%s, headers:%s>" % (
+            self.stream_id, self.headers
+        )
+
+
 class InformationalResponseReceived(object):
     """
     The InformationalResponseReceived event is fired when an informational
