@@ -28,8 +28,6 @@ from .utilities import (
     guard_increment_window, is_informational_response, authority_from_headers,
     validate_headers, validate_sent_headers, normalize_sent_headers,
     HeaderValidationFlags, extract_method_header
-    validate_headers, validate_sent_headers, normalize_sent_headers,
-    HeaderValidationFlags
 )
 
 
