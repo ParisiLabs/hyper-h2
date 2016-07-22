@@ -136,11 +136,13 @@ class TrailersReceived(object):
         )
 
 
-class ResponseSent(object):
+class HeadersSent(object):
     """
-    The ResponseSent event is fired whenever request headers are received.
-    This event carries the HTTP headers for the given response and the stream
-    ID of the new stream.
+    The HeadersSent event is fired whenever headers are received.  This event
+    carries the HTTP headers and the stream ID of the new stream.
+
+    This is an internal event, used to distinguish between headers
+    and trailers.
 
     .. versionadded:: 2.5.0
     """
@@ -148,11 +150,11 @@ class ResponseSent(object):
         #: The Stream ID for the stream this response was made on.
         self.stream_id = None
 
-        #: The response headers.
+        #: The headers.
         self.headers = None
 
     def __repr__(self):
-        return "<ResponseSent stream_id:%s, headers:%s>" % (
+        return "<HeadersSent stream_id:%s, headers:%s>" % (
             self.stream_id, self.headers
         )
 
@@ -165,6 +167,9 @@ class TrailersSent(object):
     ahead of time (e.g. content-length). This event carries the HTTP header
     fields that form the trailers and the stream ID of the stream on which they
     were received.
+
+    This is an internal event, used to distinguish between headers
+    and trailers.
 
     .. versionadded:: 2.5.0
     """

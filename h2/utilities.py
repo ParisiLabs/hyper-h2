@@ -41,7 +41,7 @@ _SECURE_HEADERS = frozenset([
 ])
 
 
-def secure_headers(headers, hdr_validation_flags):
+def _secure_headers(headers, hdr_validation_flags):
     """
     Certain headers are at risk of being attacked during the header compression
     phase, and so need to be kept out of header compression contexts. This
@@ -280,14 +280,34 @@ def _reject_pseudo_header_fields(headers, hdr_validation_flags):
         yield header
 
 
-def _validate_host_authority_header(authority_header_val, host_header_val):
+def _validate_host_authority_header(headers):
     """
     Given the :authority and Host headers from a request block that isn't
     a trailer, check that:
      1. At least one of these headers is set.
      2. If both headers are set, they match.
     Raises ``exception_class`` if the header block is invalid.
+
+    :param headers: The HTTP header set.
     """
+    # We use None as a sentinel value.  Iterate over the list of headers,
+    # and record the value of these headers (if present).  We don't need
+    # to worry about receiving duplicate :authority headers, as this is
+    # enforced by the _reject_pseudo_header_fields() pipeline.
+    #
+    # TODO: We should also guard against receiving duplicate Host headers.
+    # TODO: We should guard against sending duplicate headers.
+    authority_header_val = None
+    host_header_val = None
+
+    for header in headers:
+        if header[0] in (b':authority', u':authority'):
+            authority_header_val = header[1]
+        elif header[0] in (b'host', u'host'):
+            host_header_val = header[1]
+
+        yield header
+
     # If we have not-None values for these variables, then we know we saw
     # the corresponding header.
     authority_present = (authority_header_val is not None)
@@ -320,56 +340,9 @@ def _check_host_authority_header(headers, hdr_validation_flags):
     # blocks that aren't trailers, so skip this validation if we're on the
     # server side or looking at trailer blocks.
     if hdr_validation_flags.is_client or hdr_validation_flags.is_trailer:
-        for header in headers:
-            yield header
-        return
+        return headers
 
-    # We use None as a sentinel value.  Iterate over the list of headers,
-    # and record the value of these headers (if present).  We don't need
-    # to worry about receiving duplicate :authority headers, as this is
-    # enforced by the _reject_pseudo_header_fields() pipeline.
-    #
-    # TODO: We should also guard against receiving duplicate Host headers.
-    authority_header_val = None
-    host_header_val = None
-
-    for header in headers:
-        if header[0] in (b':authority', u':authority'):
-            authority_header_val = header[1]
-        elif header[0] in (b'host', u'host'):
-            host_header_val = header[1]
-
-        yield header
-
-    _validate_host_authority_header(
-        authority_header_val, host_header_val)
-
-
-def _secure_headers(headers, hdr_validation_flags):
-    """
-    Certain headers are at risk of being attacked during the header compression
-    phase, and so need to be kept out of header compression contexts. This
-    function automatically transforms certain specific headers into HPACK
-    never-indexed fields to ensure they don't get added to header compression
-    contexts.
-
-    This function currently implements two rules:
-
-    - 'authorization' and 'proxy-authorization' fields are automatically made
-      never-indexed.
-    - Any 'cookie' header field shorter than 20 bytes long is made
-      never-indexed.
-
-    These fields are the most at-risk. These rules are inspired by Firefox
-    and nghttp2.
-    """
-    for header in headers:
-        if header[0] in _SECURE_HEADERS:
-            yield NeverIndexedHeaderTuple(*header)
-        elif header[0] in (b'cookie', u'cookie') and len(header[1]) < 20:
-            yield NeverIndexedHeaderTuple(*header)
-        else:
-            yield header
+    return _validate_host_authority_header(headers)
 
 
 def _lowercase_header_names(headers, hdr_validation_flags):
@@ -395,28 +368,22 @@ def _check_sent_host_authority_header(headers, hdr_validation_flags):
     # blocks that aren't trailers, so skip this validation if we're on the
     # server side or looking at trailer blocks.
     if not hdr_validation_flags.is_client or hdr_validation_flags.is_trailer:
-        for header in headers:
-            yield header
-        return
+        return headers
 
-    # We use None as a sentinel value.  Iterate over the list of headers,
-    # and record the value of these headers (if present).
-    #
-    # TODO: Do we guard against sending duplicate :authority or host
-    # headers?
-    authority_header_val = None
-    host_header_val = None
+    return _validate_host_authority_header(headers)
 
-    for header in headers:
-        if header[0] in (b':authority', u':authority'):
-            authority_header_val = header[1]
-        elif header[0] in (b'host', u'host'):
-            host_header_val = header[1]
 
-        yield header
+def normalize_sent_headers(headers, hdr_validation_flags):
+    """
+    Normalizes a header sequence that we are about to send.
 
-    _validate_host_authority_header(
-        authority_header_val, host_header_val)
+    :param headers: The HTTP header set.
+    :param hdr_validation_flags: An instance of HeaderValidationFlags.
+    """
+    headers = _secure_headers(headers, hdr_validation_flags)
+    headers = _lowercase_header_names(headers, hdr_validation_flags)
+
+    return headers
 
 
 def validate_sent_headers(headers, hdr_validation_flags):
@@ -426,9 +393,6 @@ def validate_sent_headers(headers, hdr_validation_flags):
     :param headers: The HTTP header set.
     :param hdr_validation_flags: An instance of HeaderValidationFlags.
     """
-    headers = _secure_headers(headers, hdr_validation_flags)
-    headers = _lowercase_header_names(headers, hdr_validation_flags)
     headers = _check_sent_host_authority_header(headers, hdr_validation_flags)
 
-    for header in headers:
-        yield header
+    return headers

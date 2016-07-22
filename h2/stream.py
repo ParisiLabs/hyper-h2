@@ -19,15 +19,17 @@ from .events import (
     RequestReceived, ResponseReceived, DataReceived, WindowUpdated,
     StreamEnded, PushedStreamReceived, StreamReset, TrailersReceived,
     InformationalResponseReceived, AlternativeServiceAvailable,
-    ResponseSent, TrailersSent
+    HeadersSent, TrailersSent
 )
 from .exceptions import (
     ProtocolError, StreamClosedError, InvalidBodyLengthError
 )
 from .utilities import (
     guard_increment_window, is_informational_response, authority_from_headers,
-    secure_headers, validate_headers, validate_sent_headers,
+    validate_headers, validate_sent_headers, normalize_sent_headers,
     HeaderValidationFlags, extract_method_header
+    validate_headers, validate_sent_headers, normalize_sent_headers,
+    HeaderValidationFlags
 )
 
 
@@ -133,6 +135,7 @@ class H2StreamStateMachine(object):
         """
         self.client = True
         self.headers_sent = True
+        # TODO: Send the appropriate HeadersSent/TrailersSent here.
         return []
 
     def response_sent(self, previous_state):
@@ -144,7 +147,7 @@ class H2StreamStateMachine(object):
             if self.client is True or self.client is None:
                 raise ProtocolError("Client cannot send responses.")
             self.headers_sent = True
-            event = ResponseSent()
+            event = HeadersSent()
         else:
             assert not self.trailers_sent
             self.trailers_sent = True
@@ -1034,10 +1037,12 @@ class H2Stream(object):
             is_trailer = isinstance(events[0], TrailersSent)
         except IndexError:
             is_trailer = False
+
         hdr_validation_flags = HeaderValidationFlags(
             is_client=self.state_machine.client,
             is_trailer=is_trailer
         )
+        headers = normalize_sent_headers(headers, hdr_validation_flags)
         headers = validate_sent_headers(headers, hdr_validation_flags)
         encoded_headers = encoder.encode(headers)
 
