@@ -19,7 +19,7 @@ from .events import (
     RequestReceived, ResponseReceived, DataReceived, WindowUpdated,
     StreamEnded, PushedStreamReceived, StreamReset, TrailersReceived,
     InformationalResponseReceived, AlternativeServiceAvailable,
-    HeadersSent, TrailersSent
+    _HeadersSent, _TrailersSent
 )
 from .exceptions import (
     ProtocolError, StreamClosedError, InvalidBodyLengthError
@@ -145,11 +145,11 @@ class H2StreamStateMachine(object):
             if self.client is True or self.client is None:
                 raise ProtocolError("Client cannot send responses.")
             self.headers_sent = True
-            event = HeadersSent()
+            event = _HeadersSent()
         else:
             assert not self.trailers_sent
             self.trailers_sent = True
-            event = TrailersSent()
+            event = _TrailersSent()
 
         return [event]
 
