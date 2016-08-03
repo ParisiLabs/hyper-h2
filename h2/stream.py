@@ -789,6 +789,7 @@ class H2Stream(object):
         # Because encoding headers makes an irreversible change to the header
         # compression context, we make the state transition *first*.
 
+        # This does not trigger any events.
         events = self.state_machine.process_input(
             StreamInputs.SEND_PUSH_PROMISE
         )
