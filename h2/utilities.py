@@ -380,8 +380,8 @@ def normalize_sent_headers(headers, hdr_validation_flags):
     :param headers: The HTTP header set.
     :param hdr_validation_flags: An instance of HeaderValidationFlags.
     """
-    headers = _secure_headers(headers, hdr_validation_flags)
     headers = _lowercase_header_names(headers, hdr_validation_flags)
+    headers = _secure_headers(headers, hdr_validation_flags)
 
     return headers
 
