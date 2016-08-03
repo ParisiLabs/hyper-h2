@@ -19,7 +19,7 @@ from .events import (
     RequestReceived, ResponseReceived, DataReceived, WindowUpdated,
     StreamEnded, PushedStreamReceived, StreamReset, TrailersReceived,
     InformationalResponseReceived, AlternativeServiceAvailable,
-    _HeadersSent, _TrailersSent, _PushPromiseSent
+    _HeadersSent, _TrailersSent
 )
 from .exceptions import (
     ProtocolError, StreamClosedError, InvalidBodyLengthError
@@ -133,12 +133,8 @@ class H2StreamStateMachine(object):
         """
         self.client = True
         self.headers_sent = True
-
-        # TODO: Is it correct that we'd never send trailers on a response,
-        # or have I misread RFC 7230?
-        event = _HeadersSent()
-        event.stream_id = self.stream_id
-        return [event]
+        # TODO: Send the appropriate HeadersSent/TrailersSent here.
+        return []
 
     def response_sent(self, previous_state):
         """
@@ -224,31 +220,23 @@ class H2StreamStateMachine(object):
         """
         Fires on the newly pushed stream, when pushed by the local peer.
 
-        Only an internal event here, but definitionally this peer must
-        be a server.
+        No event here, but definitionally this peer must be a server.
         """
         assert self.client is None
         self.client = False
         self.headers_received = True
-
-        event = _PushPromiseSent()
-        event.stream_id = self.stream_id
-        return [event]
+        return []
 
     def recv_new_pushed_stream(self, previous_state):
         """
         Fires on the newly pushed stream, when pushed by the remote peer.
 
-        Only an internal event here, but definitionally this peer must
-        be a client.
+        No event here, but definitionally this peer must be a client.
         """
         assert self.client is None
         self.client = True
         self.headers_sent = True
-
-        event = _PushPromiseSent()
-        event.stream_id = self.stream_id
-        return [event]
+        return []
 
     def send_push_promise(self, previous_state):
         """
@@ -258,9 +246,7 @@ class H2StreamStateMachine(object):
         if self.client is True:
             raise ProtocolError("Cannot push streams from client peers.")
 
-        event = _PushPromiseSent()
-        event.stream_id = self.stream_id
-        return [event]
+        return []
 
     def recv_push_promise(self, previous_state):
         """
@@ -339,9 +325,7 @@ class H2StreamStateMachine(object):
         if self.headers_sent:
             raise ProtocolError("Information response after final response")
 
-        event = _HeadersSent()
-        event.stream_id = self.stream_id
-        return [event]
+        return []
 
     def recv_informational_response(self, previous_state):
         """
@@ -808,7 +792,7 @@ class H2Stream(object):
         events = self.state_machine.process_input(
             StreamInputs.SEND_PUSH_PROMISE
         )
-        print("@@AWLC events is %r" % events)
+        assert not events
 
         ppf = PushPromiseFrame(self.stream_id)
         ppf.promised_stream_id = related_stream_id
@@ -826,6 +810,7 @@ class H2Stream(object):
         events = self.state_machine.process_input(
             StreamInputs.SEND_PUSH_PROMISE
         )
+        assert not events
         return []
 
     def send_data(self, data, end_stream=False):
@@ -1044,18 +1029,16 @@ class H2Stream(object):
         """
         Helper method to build headers or push promise frames.
         """
-        # The headers sent by a push promise are client headers sent by
-        # a server, so we treat that as client headers.
-        if isinstance(events[0], _PushPromiseSent):
-            is_client = True
-        else:
-            is_client = self.state_machine.client
-
         # We need to lowercase the header names, and to ensure that secure
         # header fields are kept out of compression contexts.
+        try:
+            is_trailer = isinstance(events[0], TrailersSent)
+        except IndexError:
+            is_trailer = False
+
         hdr_validation_flags = HeaderValidationFlags(
-            is_client=is_client,
-            is_trailer=isinstance(events[0], _TrailersSent)
+            is_client=self.state_machine.client,
+            is_trailer=is_trailer
         )
         headers = normalize_sent_headers(headers, hdr_validation_flags)
         headers = validate_sent_headers(headers, hdr_validation_flags)
