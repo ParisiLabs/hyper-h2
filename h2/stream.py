@@ -131,10 +131,13 @@ class H2StreamStateMachine(object):
         """
         Fires when a request is sent.
         """
-        self.client = True
-        self.headers_sent = True
-        # TODO: Send the appropriate HeadersSent/TrailersSent here.
-        return []
+        if not self.headers_sent:
+            self.headers_sent = True
+            event = _HeadersSent()
+        else:
+            event = _TrailersSent()
+
+        return [event]
 
     def response_sent(self, previous_state):
         """
@@ -325,7 +328,8 @@ class H2StreamStateMachine(object):
         if self.headers_sent:
             raise ProtocolError("Information response after final response")
 
-        return []
+        event = _HeadersSent()
+        return [event]
 
     def recv_informational_response(self, previous_state):
         """

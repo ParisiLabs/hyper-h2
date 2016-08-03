@@ -157,7 +157,7 @@ class _HeadersSent(object):
         )
 
 
-class _TrailersSent(object):
+class _TrailersSent(_HeadersSent):
     """
     The _TrailersSent event is fired whenever trailers are sent on a
     stream. Trailers are a set of headers sent after the body of the
@@ -178,31 +178,6 @@ class _TrailersSent(object):
 
     def __repr__(self):
         return "<_TrailersSent stream_id:%s, headers:%s>" % (
-            self.stream_id, self.headers
-        )
-
-
-class _PushPromiseSent(object):
-    """
-    The _PushPromiseSent event is fired whenever trailers are sent on a
-    stream. Trailers are a set of headers sent after the body of the
-    request/response, and are used to provide information that wasn't known
-    ahead of time (e.g. content-length). This event carries the HTTP header
-    fields that form the trailers and the stream ID of the stream on which they
-    were received.
-
-    This is an internal event, used to determine validation steps on
-    outgoing header blocks.
-    """
-    def __init__(self):
-        #: The Stream ID for the stream on which these trailers were received.
-        self.stream_id = None
-
-        #: The trailers themselves.
-        self.headers = None
-
-    def __repr__(self):
-        return "<_PushPromiseSent stream_id:%s, headers:%s>" % (
             self.stream_id, self.headers
         )
 
