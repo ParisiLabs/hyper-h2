@@ -286,17 +286,17 @@ def _validate_host_authority_header(headers):
     a trailer, check that:
      1. At least one of these headers is set.
      2. If both headers are set, they match.
-    Raises ``exception_class`` if the header block is invalid.
 
     :param headers: The HTTP header set.
+    :raises: ``ProtocolError``
     """
     # We use None as a sentinel value.  Iterate over the list of headers,
     # and record the value of these headers (if present).  We don't need
     # to worry about receiving duplicate :authority headers, as this is
     # enforced by the _reject_pseudo_header_fields() pipeline.
     #
-    # TODO: We should also guard against receiving duplicate Host headers.
-    # TODO: We should guard against sending duplicate headers.
+    # TODO: We should also guard against receiving duplicate Host headers,
+    # and against sending duplicate headers.
     authority_header_val = None
     host_header_val = None
 

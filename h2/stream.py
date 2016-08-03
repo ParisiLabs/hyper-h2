@@ -1032,7 +1032,7 @@ class H2Stream(object):
         # We need to lowercase the header names, and to ensure that secure
         # header fields are kept out of compression contexts.
         try:
-            is_trailer = isinstance(events[0], TrailersSent)
+            is_trailer = isinstance(events[0], _TrailersSent)
         except IndexError:
             is_trailer = False
 
