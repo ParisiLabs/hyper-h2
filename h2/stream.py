@@ -131,6 +131,7 @@ class H2StreamStateMachine(object):
         """
         Fires when a request is sent.
         """
+        self.client = True
         if not self.headers_sent:
             self.headers_sent = True
             event = _HeadersSent()
